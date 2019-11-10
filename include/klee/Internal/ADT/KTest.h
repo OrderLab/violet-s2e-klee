@@ -34,6 +34,9 @@ struct KTest {
 
     unsigned numObjects;
     KTestObject *objects;
+
+    unsigned numSchedSteps;
+    unsigned long *schedSteps;
 };
 
 /* returns the current .ktest file format version */

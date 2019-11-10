@@ -7,5 +7,6 @@
 #
 #===------------------------------------------------------------------------===#
 klee_add_component(kleeBasic
+  KTest.cpp
 	Statistics.cpp
 )
