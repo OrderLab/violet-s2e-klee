@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <string>
 #include <vector>
+#include <map>
 
 namespace llvm {
 class Value;
@@ -282,16 +283,17 @@ private:
     // mutable because may need flushed during read of const
     mutable BitArray *flushMask;
 
-    ref<Expr> *knownSymbolics;
+
 
     // mutable because we may need flush during read of const
     mutable UpdateList updates;
 
 public:
     unsigned size;
-
     bool readOnly;
-
+    int *ownerCounts;
+    std::map<int, std::vector<uint64_t>> owners_map; // map of offset to its owners
+    ref<Expr> *knownSymbolics;
 private:
     ObjectState();
 
@@ -311,6 +313,7 @@ public:
     ObjectState(const MemoryObject *mo, const Array *array);
 
     ObjectState(const ObjectState &os);
+
     ~ObjectState();
 
     inline const MemoryObject *getObject() const {
@@ -396,6 +399,10 @@ public:
     void replaceConcreteBuffer(ConcreteBuffer *buffer) {
         concreteStore = buffer;
     }
+
+  /**VIOLET change**/
+  void owner_inc(unsigned offset);
+  int owner_dec(unsigned offset);
 
 private:
     const UpdateList &getUpdates() const;

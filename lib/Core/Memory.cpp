@@ -131,12 +131,12 @@ uint64_t ObjectState::ssize = 0;
 
 ObjectState::ObjectState()
     : concreteMask(0), copyOnWriteOwner(0), refCount(0), object(NULL), concreteStore(NULL), storeOffset(0),
-      flushMask(0), knownSymbolics(0), updates(0, 0), size(0), readOnly(false) {
+      flushMask(0), knownSymbolics(0), ownerCounts(0),updates(0, 0), size(0), readOnly(false) {
 }
 
 ObjectState::ObjectState(const MemoryObject *mo)
     : concreteMask(0), copyOnWriteOwner(0), refCount(0), object(mo), concreteStore(new ConcreteBuffer(mo->size)),
-      storeOffset(0), flushMask(0), knownSymbolics(0), updates(0, 0), size(mo->size), readOnly(false) {
+      storeOffset(0), flushMask(0), knownSymbolics(0),ownerCounts(0), updates(0, 0), size(mo->size), readOnly(false) {
     if (!UseConstantArrays) {
         // FIXME: Leaked.
         static unsigned id = 0;
@@ -149,7 +149,7 @@ ObjectState::ObjectState(const MemoryObject *mo)
 
 ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
     : concreteMask(0), copyOnWriteOwner(0), refCount(0), object(mo), concreteStore(new ConcreteBuffer(mo->size)),
-      storeOffset(0), flushMask(0), knownSymbolics(0), updates(array, 0), size(mo->size), readOnly(false) {
+      storeOffset(0), flushMask(0), knownSymbolics(0), ownerCounts(0), updates(array, 0), size(mo->size), readOnly(false) {
     makeSymbolic();
     ++count;
     ssize += mo->size;
@@ -158,17 +158,23 @@ ObjectState::ObjectState(const MemoryObject *mo, const Array *array)
 ObjectState::ObjectState(const ObjectState &os)
     : concreteMask(os.concreteMask ? new BitArray(*os.concreteMask, os.size) : 0), copyOnWriteOwner(0), refCount(0),
       object(os.object), concreteStore(new ConcreteBuffer(os.size)), storeOffset(0),
-      flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0), knownSymbolics(0), updates(os.updates),
+      flushMask(os.flushMask ? new BitArray(*os.flushMask, os.size) : 0), knownSymbolics(0),ownerCounts(0), updates(os.updates),
       size(os.size), readOnly(false) {
     assert(!os.readOnly && "no need to copy read only object?");
 
     assert(!os.concreteMask || (os.size == os.concreteMask->getBitCount()));
-
     if (os.knownSymbolics) {
         knownSymbolics = new ref<Expr>[ size ];
         for (unsigned i = 0; i < size; i++)
             knownSymbolics[i] = os.knownSymbolics[i];
     }
+    if(os.ownerCounts) {
+        ownerCounts = new int[size];
+        for(int i = 0; i < size; i++)
+            ownerCounts[i] = os.ownerCounts[i];
+    }
+    owners_map = os.owners_map;
+
     ++count;
     ssize += os.size;
     memcpy(concreteStore->get(), os.concreteStore->get(), size * sizeof(*concreteStore->get()));
@@ -179,8 +185,13 @@ ObjectState::~ObjectState() {
         concreteMask->decref();
     if (flushMask)
         flushMask->decref();
-    if (knownSymbolics)
-        delete[] knownSymbolics;
+    if (knownSymbolics) {
+      delete[] knownSymbolics;
+    }
+    if (ownerCounts)
+        delete[] ownerCounts;
+    if(!owners_map.empty())
+        owners_map.clear();
     concreteStore->decref();
     --count;
     ssize -= size;
@@ -195,7 +206,6 @@ ObjectState *ObjectState::split(MemoryObject *newObject, unsigned offset) const 
     assert(flushMask == NULL);
     assert(updates.getSize() == 0);
     assert(readOnly == false);
-
     ObjectState *ret = new ObjectState();
     ret->object = newObject;
 
@@ -455,7 +465,7 @@ ref<Expr> ObjectState::read8(unsigned offset) const {
         if (isByteConcrete(offset)) {
             return ConstantExpr::create(concreteStore->get()[offset + storeOffset], Expr::Int8);
         } else if (isByteKnownSymbolic(offset)) {
-            return knownSymbolics[offset];
+           return knownSymbolics[offset];
         } else {
             assert(isByteFlushed(offset) && "unflushed byte without cache value");
             assert(offset < size);
@@ -495,17 +505,38 @@ void ObjectState::write8(unsigned offset, uint8_t value) {
     }
 }
 
+void ObjectState::owner_inc(unsigned offset) {
+  if (ownerCounts) {
+    ownerCounts[offset]++;
+  } else {
+    ownerCounts = new int[size];
+    for(int i=0; i<size; i++) {
+        ownerCounts[i] = 0;
+    }
+    ownerCounts[offset]++;
+  }
+}
+
+int ObjectState::owner_dec(unsigned offset) {
+  if (offset < size) {
+    return (ownerCounts[offset]--);
+  }
+  return -1;
+}
+
 void ObjectState::write8(unsigned offset, ref<Expr> value) {
     // can happen when ExtractExpr special cases
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
-        write8(offset, (uint8_t) CE->getZExtValue(8));
-    } else {
-        assert(!object->isSharedConcrete && "write of non-constant value to shared concrete object");
-        setKnownSymbolic(offset, value.get());
+  if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
+      write8(offset, (uint8_t) CE->getZExtValue(8));
+  } else {
+      assert(!object->isSharedConcrete && "write of non-constant value to shared concrete object");
+      setKnownSymbolic(offset, value.get());
 
-        markByteSymbolic(offset);
-        markByteUnflushed(offset);
-    }
+      markByteSymbolic(offset);
+      markByteUnflushed(offset);
+      owners_map[offset].push_back(object->address + offset);
+      owner_inc(offset);
+  }
 }
 
 void ObjectState::write8(ref<Expr> offset, ref<Expr> value) {
