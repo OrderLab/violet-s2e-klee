@@ -184,6 +184,8 @@ public:
     bool permanent;
     static uint64_t permanentCount;
 
+    std::string sname;
+
 protected:
     unsigned hashValue;
 

@@ -291,8 +291,6 @@ private:
 public:
     unsigned size;
     bool readOnly;
-    int *ownerCounts;
-    std::map<int, std::vector<uint64_t>> owners_map; // map of offset to its owners
     ref<Expr> *knownSymbolics;
 private:
     ObjectState();
@@ -399,10 +397,6 @@ public:
     void replaceConcreteBuffer(ConcreteBuffer *buffer) {
         concreteStore = buffer;
     }
-
-  /**VIOLET change**/
-  void owner_inc(unsigned offset);
-  int owner_dec(unsigned offset);
 
 private:
     const UpdateList &getUpdates() const;
