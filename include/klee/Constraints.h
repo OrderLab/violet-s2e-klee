@@ -39,7 +39,7 @@
 #include "klee/Expr.h"
 #include "klee/Internal/ADT/ImmutableMap.h"
 #include "klee/Solver.h"
-
+#include "klee/Internal/Module/KInstIterator.h"
 // We don't use KLEE's own ref<T> because it is intrusive.
 #include <boost/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
@@ -65,6 +65,10 @@ public:
     }
     size_t depth() const {
         return depth_;
+    }
+
+    KInstIterator getKInstruction() const {
+        return currentKInst;
     }
 
 protected:
@@ -93,6 +97,7 @@ private:
     const ConditionNodeRef parent_;
     const ref<Expr> expr_;
     size_t depth_;
+    KInstIterator currentKInst;
 
     friend class ConstraintManager;
 
@@ -206,9 +211,11 @@ public:
         throw std::exception();
     }
 
+    std::map<uint64_t,ref<Expr>> constMap;
 private:
     ConditionNodeRef head_;
     ConditionNodeRef root_;
+
 };
 }
 

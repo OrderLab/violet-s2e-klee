@@ -82,6 +82,7 @@ public:
 
     /// Disables forking, set by user code.
     bool forkDisabled;
+    bool collectEnabled;
 
     /// ordered list of symbolics: used to generate test cases.
     //

@@ -409,7 +409,7 @@ ref<ConstantExpr> ExecutionState::toConstant(ref<Expr> e, const std::string &rea
         os << "(instruction: " << ki->inst->getParent()->getParent()->getName().str() << ": " << *ki->inst << ") ";
     }
 
-    os << "(reason: " << reason << ") expression " << e << " to value " << value;
+//    os << "(reason: " << reason << ") expression " << e << " to value " << value;
 
     klee_warning_external(reason.c_str(), "%s", os.str().c_str());
 
@@ -477,8 +477,8 @@ bool ExecutionState::addConstraint(const ref<Expr> &constraint, bool recomputeCo
         *klee_warning_stream << "Attempt to add invalid constraint:" << simplified << "\n";
         return false;
     }
-
     auto evaluated = concolics->evaluate(simplified);
+
     ConstantExpr *ce = dyn_cast<ConstantExpr>(evaluated);
     if (!ce) {
         *klee_warning_stream << "Constraint does not evaluate to a constant:" << evaluated << "\n";
